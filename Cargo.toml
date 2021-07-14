@@ -1,0 +1,19 @@
+[package]
+name = "cyloader"
+version = "0.1.0"
+
+[lib]
+name = "cyloader"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cypress-updater"
+path = "src/updater.rs"
+
+[dependencies]
+serialport = {version = "4.0", default-features = false}
+num_enum = "0.5"
+byteorder = "1.1"
+clap = "3.0.0-beta.2"
+hex = "0.4.3"
+
