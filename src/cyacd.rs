@@ -4,15 +4,15 @@ use std::io::Read;
 use std::fs::File;
 use byteorder::{BigEndian, ReadBytesExt};
 
-pub struct BootloaderRow {
+pub struct DataRecord {
     pub array_id: u8,
     pub row_number: u16,
     pub data: Vec<u8>,
     pub checksum: u8,
 }
 
-impl BootloaderRow {
-    fn read<T: io::BufRead>(reader: &mut T) -> Result<BootloaderRow, io::Error> {
+impl DataRecord {
+    fn read<T: io::BufRead>(reader: &mut T) -> Result<DataRecord, io::Error> {
         let column = reader.read_u8()?;
         if column != b':' {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "expected :"));
@@ -28,7 +28,7 @@ impl BootloaderRow {
         content_slice.read_exact(data.as_mut_slice())?;
 
         let checksum = content_slice.read_u8()?;
-        Ok(BootloaderRow{
+        Ok(DataRecord{
             array_id: array_id,
             row_number: row_number,
             data: data,
@@ -37,14 +37,14 @@ impl BootloaderRow {
     }
 }
 
-pub struct BootloaderData {
+pub struct ApplicationData {
     pub silicon_id: u32,
     pub silicon_rev: u8,
     pub checksum_kind: u8,
-    pub rows: Vec<BootloaderRow>,
+    pub rows: Vec<DataRecord>,
 }
 
-impl BootloaderData {
+impl ApplicationData {
     fn read_bootloader_info<T: io::BufRead>(reader: &mut T) -> Result<(u32, u8, u8), io::Error> {
         let header = read_hex_line(reader)?;
         println!("Header row size: {}", header.len());
@@ -58,29 +58,29 @@ impl BootloaderData {
         Ok((silicon_id, silicon_rev, checksum_type))
     }
 
-    pub fn from_file(filename: String) -> Result<BootloaderData, io::Error> {
+    pub fn from_file(filename: String) -> Result<ApplicationData, io::Error> {
         let f = File::open(filename)?;
         let reader = io::BufReader::new(f);
-        return BootloaderData::read(reader);
+        return ApplicationData::read(reader);
     }
 
-    pub fn read<T: io::BufRead>(reader: T) -> Result<BootloaderData, io::Error> {
-        let mut rows = Vec::<BootloaderRow>::new();
+    pub fn read<T: io::BufRead>(reader: T) -> Result<ApplicationData, io::Error> {
+        let mut rows = Vec::<DataRecord>::new();
         let mut header_data: (u32, u8, u8) = (0, 0, 0);
         let lines_iter = reader.lines().enumerate();
         for (index, line) in lines_iter {
             if let Ok(content) = &line {
                 let mut bytes = content.as_bytes();
                 if index == 0 {
-                    header_data = BootloaderData::read_bootloader_info(&mut bytes)?;
+                    header_data = ApplicationData::read_bootloader_info(&mut bytes)?;
                 } else {
-                    let row = BootloaderRow::read(&mut bytes)?;
+                    let row = DataRecord::read(&mut bytes)?;
                     rows.push(row);
                 }
             }
         }
 
-        return Ok(BootloaderData {
+        return Ok(ApplicationData {
             silicon_id: header_data.0,
             silicon_rev: header_data.1,
             checksum_kind: header_data.2,

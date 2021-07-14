@@ -4,7 +4,7 @@ extern crate byteorder;
 extern crate hex;
 
 mod cyacd;
-pub use cyacd::{BootloaderRow, BootloaderData};
+pub use cyacd::{DataRecord, ApplicationData};
 
 use std::io;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};

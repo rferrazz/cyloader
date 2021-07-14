@@ -3,7 +3,7 @@ extern crate clap;
 extern crate serialport;
 extern crate byteorder;
 
-use cyloader::{BootloaderData, BootloaderCommand, CommandCode, MAX_DATA_LENGTH};
+use cyloader::{ApplicationData, BootloaderCommand, CommandCode, MAX_DATA_LENGTH};
 use clap::{AppSettings, Clap};
 use std::time::{Duration};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -23,7 +23,7 @@ struct Options {
 fn main() -> Result<(), std::io::Error> {
     let options: Options = Options::parse();
 
-    let bootloader = BootloaderData::from_file(options.path).unwrap();
+    let bootloader = ApplicationData::from_file(options.path).unwrap();
     println!("Silicon id: {:#0x}, rev: {:#0x}, checksum_kind: {:#0x}", bootloader.silicon_id, bootloader.silicon_rev, bootloader.checksum_kind);
 
     let mut port = serialport::new(options.serial_port, 115_200)
