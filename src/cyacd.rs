@@ -47,7 +47,6 @@ pub struct ApplicationData {
 impl ApplicationData {
     fn read_bootloader_info<T: io::BufRead>(reader: &mut T) -> Result<(u32, u8, u8), io::Error> {
         let header = read_hex_line(reader)?;
-        println!("Header row size: {}", header.len());
 
         let mut header_slice = header.as_slice();
 

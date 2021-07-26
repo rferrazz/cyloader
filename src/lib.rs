@@ -2,20 +2,24 @@ extern crate serialport;
 extern crate num_enum;
 extern crate byteorder;
 extern crate hex;
+extern crate log;
 
 mod cyacd;
 pub use cyacd::{DataRecord, ApplicationData};
 
 use std::io;
+use std::time::Duration;
+use std::cmp::min;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, FromPrimitive};
+use log::{debug};
 
 const START_BYTE: u8 = 0x01;
 const END_BYTE: u8 = 0x17;
 pub const MAX_DATA_LENGTH: usize = 64-7-9;
 
 
-#[derive(IntoPrimitive, FromPrimitive, Clone, Copy, Debug)]
+#[derive(IntoPrimitive, FromPrimitive, Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum CommandCode {
     Success = 0x00,
@@ -42,7 +46,7 @@ pub enum CommandCode {
     EnterBootloader = 0x38,
     ProgramRow = 0x39,
     VerifyRow = 0x3a,
-    ExitBootloader = 0x3b,  
+    ExitBootloader = 0x3b,
 }
 
 
@@ -52,7 +56,7 @@ pub struct BootloaderCommand {
 }
 
 impl BootloaderCommand {
-    pub fn write<T: io::Write>(&self, writer: &mut T) -> Result<(), io::Error> {
+    pub fn marshal<T: io::Write>(&self, writer: &mut T) -> Result<(), io::Error> {
         let mut buffer = vec![];
         buffer.write_u8(START_BYTE)?;
         buffer.write_u8(u8::from(self.command_code))?;
@@ -98,6 +102,90 @@ impl BootloaderCommand {
             }
         }
         return Err(io::Error::new(io::ErrorKind::InvalidData, format!("failed reading a meaningful message after {} attempts", attempts)))
+    }
+}
+
+pub struct UpdateSession {
+    serial: std::boxed::Box<dyn serialport::SerialPort>,
+    silicon_id: u32,
+}
+
+impl UpdateSession{
+    pub fn new(serial: String) -> Result<UpdateSession, io::Error> {
+        let mut port = serialport::new(serial, 115_200)
+            .timeout(Duration::from_millis(100)).parity(serialport::Parity::None)
+            .open().expect("Failed to open port");
+
+        let start_session = BootloaderCommand {
+            command_code: CommandCode::EnterBootloader,
+            data: vec![],
+        };
+        start_session.marshal(&mut port)?;
+        let reply = BootloaderCommand::read(&mut port, 5)?;
+        let silicon_id = reply.data.as_slice().read_u32::<LittleEndian>()?;
+
+        Ok(UpdateSession{
+            serial: port,
+            silicon_id: silicon_id,
+        })
+    }
+
+    pub fn update(&mut self, update_file_path: String) -> Result<(), io::Error> {
+        let app_data = ApplicationData::from_file(update_file_path)?;
+
+        if app_data.silicon_id != self.silicon_id {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("update_file for another chip: {:#0x}", app_data.silicon_id)));
+        }
+
+        for row in app_data.rows {
+
+            debug!("Programming row number {}. array id: {}, data size: {}", row.row_number, row.array_id, row.data.len());
+            let chunk_count = row.data.len() / MAX_DATA_LENGTH;
+
+            for i in 0..chunk_count+1 {
+                let index = i*MAX_DATA_LENGTH;
+                let slice = &row.data[index..min(row.data.len(), index + MAX_DATA_LENGTH)];
+                let mut data = vec![];
+
+                let command = if i == chunk_count {
+                    data.write_u8(row.array_id)?;
+                    data.write_u16::<LittleEndian>(row.row_number)?;
+                    data.extend(slice);
+
+                    BootloaderCommand{
+                        command_code: CommandCode::ProgramRow,
+                        data: data,
+                    }
+                } else {
+                    data.extend(slice);
+
+                    BootloaderCommand {
+                        command_code: CommandCode::SendData,
+                        data: data,
+                    }
+                };
+                command.marshal(&mut self.serial)?;
+                let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
+                if reply.command_code != CommandCode::Success {
+                    return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?}", reply.command_code)));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for UpdateSession {
+    fn drop(&mut self) {
+        let end_session = BootloaderCommand {
+            command_code: CommandCode::ExitBootloader,
+            data: vec![],
+        };
+
+        if let Err(error) = end_session.marshal(&mut self.serial) {
+            println!("Failed closing bootloader session: {}", error);
+        }
     }
 }
 

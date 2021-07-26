@@ -2,11 +2,12 @@ extern crate cyloader;
 extern crate clap;
 extern crate serialport;
 extern crate byteorder;
+extern crate log;
+extern crate env_logger;
 
-use cyloader::{ApplicationData, BootloaderCommand, CommandCode, MAX_DATA_LENGTH};
+use cyloader::UpdateSession;
 use clap::{AppSettings, Clap};
-use std::time::{Duration};
-use byteorder::{LittleEndian, ReadBytesExt};
+use log::{info, error};
 
 
 #[derive(Clap)]
@@ -21,47 +22,19 @@ struct Options {
 }
 
 fn main() -> Result<(), std::io::Error> {
+    env_logger::init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"));
+
     let options: Options = Options::parse();
+    
+    let mut session = UpdateSession::new(options.serial_port)?;
 
-    let bootloader = ApplicationData::from_file(options.path).unwrap();
-    println!("Silicon id: {:#0x}, rev: {:#0x}, checksum_kind: {:#0x}", bootloader.silicon_id, bootloader.silicon_rev, bootloader.checksum_kind);
-
-    let mut port = serialport::new(options.serial_port, 115_200)
-    .timeout(Duration::from_millis(100)).parity(serialport::Parity::None)
-    .open().expect("Failed to open port");
-
-    let enter_bootloader = BootloaderCommand{
-        command_code: CommandCode::EnterBootloader,
-        data: vec![],
-    };
-
-    enter_bootloader.write(&mut port)?;
-
-    let reply = BootloaderCommand::read(&mut port, 100)?;
-    println!("Enter bootloader reply: {:?}", reply.command_code);
-    let silicon_id = reply.data.as_slice().read_u16::<LittleEndian>()?;
-    assert_eq!(silicon_id, bootloader.silicon_id);
-
-    // TODO: send update
-    for row in bootloader.rows {
-        if row.data.len() > MAX_DATA_LENGTH {
-            let slice =  &row.data[..MAX_DATA_LENGTH];
-            let data_vec = Vec::new();
-            data_vec.extend(slice);
-            
-            let command = BootloaderCommand{
-                command_code: CommandCode::SendData,
-                data: data_vec,
-            };
-        }
+    info!("update started...");
+    if let Err(error) = session.update(options.path) {
+        error!("...update failed with error: {}", error);
+        return Err(error)
     }
-
-    let exit_bootloader = BootloaderCommand {
-        command_code: CommandCode::ExitBootloader,
-        data: vec![],
-    };
-
-    exit_bootloader.write(&mut port)?;
+    info!("...update finished successfully!");
 
     Ok(())
 }
