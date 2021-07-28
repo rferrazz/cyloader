@@ -1,11 +1,9 @@
-extern crate cyloader;
+extern crate cyapi;
 extern crate clap;
-extern crate serialport;
-extern crate byteorder;
 extern crate log;
 extern crate env_logger;
 
-use cyloader::UpdateSession;
+use cyapi::UpdateSession;
 use clap::{AppSettings, Clap};
 use log::{info, error};
 

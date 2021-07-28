@@ -16,7 +16,7 @@ use log::{debug};
 
 const START_BYTE: u8 = 0x01;
 const END_BYTE: u8 = 0x17;
-pub const MAX_DATA_LENGTH: usize = 64-7-9;
+pub const MAX_DATA_LENGTH: usize = 64-7;
 
 
 #[derive(IntoPrimitive, FromPrimitive, Clone, Copy, Debug, PartialEq)]
