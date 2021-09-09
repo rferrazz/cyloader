@@ -16,6 +16,7 @@ use log::{debug};
 
 const START_BYTE: u8 = 0x01;
 const END_BYTE: u8 = 0x17;
+const MAX_WRITE_RETRIES: u16 = 3;
 pub const MAX_DATA_LENGTH: usize = 64-7;
 
 
@@ -110,6 +111,24 @@ pub struct UpdateSession {
     silicon_id: u32,
 }
 
+fn retry<F>(max_iterations: u16, mut function: F) -> Result<(), io::Error>
+where F: FnMut(u16) -> Result<(), io::Error>
+{
+    if max_iterations < 1 {
+        return Err(io::Error::new(io::ErrorKind::Other, print!("cannot try executing a function 0 times")));
+    }
+
+    let mut last_error: io::Error;
+    for i in 0..max_iterations {
+        match function(i) {
+            Ok(val) => return Ok(val),
+            Err(error) => last_error = error,
+        }
+    }
+
+    return Err(last_error);
+}
+
 impl UpdateSession{
     pub fn new(serial: String) -> Result<UpdateSession, io::Error> {
         let mut port = serialport::new(serial, 115_200)
@@ -164,10 +183,16 @@ impl UpdateSession{
                         data: data,
                     }
                 };
-                command.marshal(&mut self.serial)?;
-                let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
-                if reply.command_code != CommandCode::Success {
-                    return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?}", reply.command_code)));
+
+                if let Err(error) = retry(MAX_WRITE_RETRIES, |iteration: u16| {
+                    command.marshal(&mut self.serial)?;
+                    let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
+                    if reply.command_code != CommandCode::Success {
+                        return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?}", reply.command_code)));
+                    }
+                    Ok(())
+                }) {
+                    return Err(error);
                 }
             }
         }
