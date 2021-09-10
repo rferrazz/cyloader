@@ -10,13 +10,14 @@ pub use cyacd::{DataRecord, ApplicationData};
 use std::io;
 use std::time::Duration;
 use std::cmp::min;
+use std::thread::sleep;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, FromPrimitive};
-use log::{debug};
+use log::{debug, warn};
 
 const START_BYTE: u8 = 0x01;
 const END_BYTE: u8 = 0x17;
-const MAX_WRITE_RETRIES: u16 = 3;
+const SLEEP_TIME_BETWEEN_RETRIES: Duration = Duration::from_millis(400);
 pub const MAX_DATA_LENGTH: usize = 64-7;
 
 
@@ -114,15 +115,19 @@ pub struct UpdateSession {
 fn retry<F>(max_iterations: u16, mut function: F) -> Result<(), io::Error>
 where F: FnMut(u16) -> Result<(), io::Error>
 {
+    let mut last_error = io::Error::new(io::ErrorKind::Other, "cannot try executing a function 0 times");
+    
     if max_iterations < 1 {
-        return Err(io::Error::new(io::ErrorKind::Other, print!("cannot try executing a function 0 times")));
+        return Err(last_error);
     }
 
-    let mut last_error: io::Error;
     for i in 0..max_iterations {
         match function(i) {
             Ok(val) => return Ok(val),
-            Err(error) => last_error = error,
+            Err(error) => {
+                last_error = error;
+                sleep(SLEEP_TIME_BETWEEN_RETRIES);
+            },
         }
     }
 
@@ -149,7 +154,7 @@ impl UpdateSession{
         })
     }
 
-    pub fn update(&mut self, update_file_path: String) -> Result<(), io::Error> {
+    pub fn update(&mut self, update_file_path: String, max_iterations_on_error: u16) -> Result<(), io::Error> {
         let app_data = ApplicationData::from_file(update_file_path)?;
 
         if app_data.silicon_id != self.silicon_id {
@@ -184,11 +189,12 @@ impl UpdateSession{
                     }
                 };
 
-                if let Err(error) = retry(MAX_WRITE_RETRIES, |iteration: u16| {
+                if let Err(error) = retry(max_iterations_on_error, |iteration: u16| {
                     command.marshal(&mut self.serial)?;
                     let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
                     if reply.command_code != CommandCode::Success {
-                        return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?}", reply.command_code)));
+                        warn!("failed writing update chunk for the {} time: {:?}", iteration+1, reply.command_code);
+                        return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?} for the {} time", reply.command_code, iteration+1)));
                     }
                     Ok(())
                 }) {

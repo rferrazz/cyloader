@@ -24,11 +24,11 @@ fn main() -> Result<(), std::io::Error> {
         env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"));
 
     let options: Options = Options::parse();
-    
+
     let mut session = UpdateSession::new(options.serial_port)?;
 
     info!("update started...");
-    if let Err(error) = session.update(options.path) {
+    if let Err(error) = session.update(options.path, 6) {
         error!("...update failed with error: {}", error);
         return Err(error)
     }

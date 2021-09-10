@@ -19,7 +19,7 @@ thread_local!{
 /// Returns 0 on success, 1 on an update session initialization error, 2 on an upload error.
 /// 
 /// To get a detailed error of what went wrong you can use last_error_message()
-pub extern "C" fn update_psoc(update_file: *const c_char, serial_port: *const c_char) -> c_int {
+pub extern "C" fn update_psoc(update_file: *const c_char, serial_port: *const c_char, max_iterations_on_error: u16) -> c_int {
     let s: &CStr = unsafe { CStr::from_ptr(serial_port) };
     let f: &CStr = unsafe { CStr::from_ptr(update_file) };
     
@@ -34,7 +34,7 @@ pub extern "C" fn update_psoc(update_file: *const c_char, serial_port: *const c_
         },
     };
 
-    if let Err(error) = session.update(String::from(f.to_str().unwrap())) {
+    if let Err(error) = session.update(String::from(f.to_str().unwrap()), max_iterations_on_error) {
         LAST_ERROR.with(|prev| {
             *prev.borrow_mut() = Some(Box::new(error));
         });
