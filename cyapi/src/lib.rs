@@ -163,43 +163,58 @@ impl UpdateSession{
 
         for row in app_data.rows {
 
-            debug!("Programming row number {}. array id: {}, data size: {}", row.row_number, row.array_id, row.data.len());
-            let chunk_count = row.data.len() / MAX_DATA_LENGTH;
+            if let Err(error) = retry(max_iterations_on_error, |iteration: u16| {
+                debug!("Programming row number {}. iteration: {}, array id: {}, data size: {}", iteration, row.row_number, row.array_id, row.data.len());
+                let chunk_count = row.data.len() / MAX_DATA_LENGTH;
 
-            for i in 0..chunk_count+1 {
-                let index = i*MAX_DATA_LENGTH;
-                let slice = &row.data[index..min(row.data.len(), index + MAX_DATA_LENGTH)];
-                let mut data = vec![];
+                for i in 0..chunk_count+1 {
+                    let index = i*MAX_DATA_LENGTH;
+                    let slice = &row.data[index..min(row.data.len(), index + MAX_DATA_LENGTH)];
+                    let mut data = vec![];
 
-                let command = if i == chunk_count {
-                    data.write_u8(row.array_id)?;
-                    data.write_u16::<LittleEndian>(row.row_number)?;
-                    data.extend(slice);
+                    let command = if i == chunk_count {
+                        data.write_u8(row.array_id)?;
+                        data.write_u16::<LittleEndian>(row.row_number)?;
+                        data.extend(slice);
 
-                    BootloaderCommand{
-                        command_code: CommandCode::ProgramRow,
-                        data: data,
-                    }
-                } else {
-                    data.extend(slice);
+                        BootloaderCommand{
+                            command_code: CommandCode::ProgramRow,
+                            data,
+                        }
+                    } else {
+                        data.extend(slice);
 
-                    BootloaderCommand {
-                        command_code: CommandCode::SendData,
-                        data: data,
-                    }
-                };
+                        BootloaderCommand {
+                            command_code: CommandCode::SendData,
+                            data: data,
+                        }
+                    };
 
-                if let Err(error) = retry(max_iterations_on_error, |iteration: u16| {
+
                     command.marshal(&mut self.serial)?;
                     let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
                     if reply.command_code != CommandCode::Success {
                         warn!("failed writing update chunk for the {} time: {:?}", iteration+1, reply.command_code);
-                        return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?} for the {} time", reply.command_code, iteration+1)));
+                        return Err(io::Error::new(io::ErrorKind::Other, format!("failed writing update data {:?}: {:?} for the {} time", command.command_code, reply.command_code, iteration+1)));
                     }
-                    Ok(())
-                }) {
-                    return Err(error);
                 }
+
+                let mut data = vec![];
+                data.write_u8(row.array_id)?;
+                data.write_u16::<LittleEndian>(row.row_number)?;
+                let verify_row_command = BootloaderCommand {
+                    command_code: CommandCode::VerifyRow,
+                    data,
+                };
+                verify_row_command.marshal(&mut self.serial)?;
+                let reply = BootloaderCommand::unmarshal(&mut self.serial)?;
+                if reply.command_code != CommandCode::Success {
+                    warn!("Row verification failed with error {:?}", reply.command_code);
+                    return Err(io::Error::new(io::ErrorKind::Other, format!("programmed row verification failed with: {:?}", reply.command_code)));
+                }
+                Ok(())
+            }) {
+                return Err(error);
             }
         }
 
