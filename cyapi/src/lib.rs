@@ -64,10 +64,13 @@ impl BootloaderCommand {
         buffer.write_u8(START_BYTE)?;
         buffer.write_u8(u8::from(self.command_code))?;
         buffer.write_u16::<LittleEndian>(self.data.len() as u16)?;
-        writer.write_all(buffer.as_slice())?;
-        writer.write_all(self.data.as_slice())?;
-        writer.write_u16::<LittleEndian>(checksum( &[buffer.as_slice(), self.data.as_slice()].concat()))?;
-        writer.write_u8(END_BYTE)?;
+        let checksum = checksum( &[buffer.as_slice(), self.data.as_slice()].concat());
+        buffer.write(self.data.as_slice())?;
+        buffer.write_u16::<LittleEndian>(checksum)?;
+        buffer.write_u8(END_BYTE)?;
+
+        writer.write(buffer.as_slice())?;
+        writer.flush()?;
         Ok(())
     }
 
