@@ -120,7 +120,7 @@ fn retry<F>(max_iterations: u16, mut function: F) -> Result<(), io::Error>
 where F: FnMut(u16) -> Result<(), io::Error>
 {
     let mut last_error = io::Error::new(io::ErrorKind::Other, "cannot try executing a function 0 times");
-    
+
     if max_iterations < 1 {
         return Err(last_error);
     }
@@ -141,8 +141,8 @@ where F: FnMut(u16) -> Result<(), io::Error>
 impl UpdateSession{
     pub fn new(serial: String) -> Result<UpdateSession, io::Error> {
         let mut port = serialport::new(serial, 115_200)
-            .timeout(Duration::from_millis(100)).parity(serialport::Parity::None)
-            .open().expect("Failed to open port");
+        .timeout(Duration::from_millis(100)).parity(serialport::Parity::None).stop_bits(serialport::StopBits::One)
+        .open().expect("Failed to open port");
 
         let start_session = BootloaderCommand {
             command_code: CommandCode::EnterBootloader,
@@ -241,9 +241,9 @@ impl Drop for UpdateSession {
 
 pub fn checksum(data: &[u8]) -> u16 {
     let sum: usize =
-        data
-        .iter()
-        .fold(0, |acc, &value| acc.wrapping_add(value as usize));
+    data
+    .iter()
+    .fold(0, |acc, &value| acc.wrapping_add(value as usize));
 
     let lsb = (sum & 0xFFFF) as u16;
     let checksum = (0 as u16).wrapping_sub(lsb);
