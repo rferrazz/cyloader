@@ -11,13 +11,14 @@ use std::io;
 use std::time::Duration;
 use std::cmp::min;
 use std::thread::sleep;
+use std::io::Write;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use num_enum::{IntoPrimitive, FromPrimitive};
 use log::{debug, warn};
 
 const START_BYTE: u8 = 0x01;
 const END_BYTE: u8 = 0x17;
-const SLEEP_TIME_BETWEEN_RETRIES: Duration = Duration::from_millis(400);
+const SLEEP_TIME_BETWEEN_RETRIES: Duration = Duration::from_millis(1000);
 pub const MAX_DATA_LENGTH: usize = 64-7;
 
 
