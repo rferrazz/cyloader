@@ -70,7 +70,6 @@ impl BootloaderCommand {
         buffer.write_u8(END_BYTE)?;
 
         writer.write(buffer.as_slice())?;
-        writer.flush()?;
         Ok(())
     }
 
